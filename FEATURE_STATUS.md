@@ -1,6 +1,8 @@
-# SVG Layer Toolkit - Feature Status (truthful)
+# SVG Layer Toolkit - Feature Status (Truthful Implementation Status)
 
-Last Updated: current session
+**Last Updated:** November 2024  
+**Version:** 2.1  
+**Related Docs:** See `FEATURE_NOTES.md` for feature reference, `FEATURE_EXPLANATIONS.md` for detailed explanations
 
 ## ✅ Implemented (current build)
 - Load/save SVG, history (100 states), selection/multi-select, attribute edits (fill/stroke/opacity/transform/ID), color replace, token inject/export, clipboard copy.
@@ -10,19 +12,45 @@ Last Updated: current session
 - Workflow panel: selection/group info, region select, template loader (sample file), file patcher (update external SVG paths by ID), simple comparator (path count).
 - Animator: CSS animations with optional GSAP if loaded.
 
+### UX Enhancements (November 2024)
+- **Position Indicator**: Status bar showing X/Y coordinates during drag operations with grid snapping indicator
+- **Keyboard Shortcuts**: Ctrl/Cmd+D (duplicate), Ctrl/Cmd+A (select all), Escape (deselect), Arrow keys (nudge with grid snapping)
+- **Selection Tools**: Invert Selection, Select Similar buttons in Workflow Manager
+- **Error Handling**: User-friendly error messages with visual notifications for SVG loading issues
+- **Visual Feedback**: 
+  - Marquee selection with real-time path highlighting
+  - Drag preview with ghost paths
+  - Selection animations with fade transitions
+  - Loading states for heavy operations
+- **Quick Actions Toolbar**: Floating toolbar with Copy, Duplicate, Delete, and alignment buttons
+- **Resize Controls**: Shift+resize to maintain aspect ratio, resize handles with position indicator
+- **Grid Snapping**: Visual grid overlay, configurable grid size, snap-to-grid for all transformations
+
 ## ⚠️ Partial / Basic
-- Boolean operations (union/intersect/subtract): basic; Paper.js is loaded but robust ops are not wired.
-- Image tracer/text-to-path: simple canvas threshold/contour trace; quality is limited.
-- Gradient/stroke styling: basic attribute fields only; no dedicated gradient UI.
+- Boolean operations (union/intersect/subtract): Paper.js implementation with fallback to basic; union uses Paper.js, subtract/intersect have Paper.js support.
+- Image tracer/text-to-path: enhanced with Sobel edge detection and adaptive thresholding; Catmull-Rom interpolation for smoother curves.
+- Gradient/stroke styling: enhanced gradient editor with multiple stops, angle/position controls; fully editable.
 - Measurement: stats available; interactive ruler/tape not wired.
 - Background controls: header and preview tool share `setBackgroundMode`; keep them in sync.
 
 ## 🚧 Not Implemented
-- Node editor with point handles/snap.
-- Bounding-box drag handles (scale/rotate/move).
+- Node editor with point handles/snap (basic node editor exists but needs enhancement).
 - Advanced snapping (centers/edges with guides), drag-to-create guide lines.
-- Robust boolean ops, QR generator, symmetry/mirror mode, advanced gradient editor.
+- QR generator UI (library loaded but not fully integrated).
+- Symmetry/mirror mode (basic support exists but needs enhancement).
 
 ## Notes
-- CDN libraries loaded: svg.js, paper.js, qrcode.js, gsap.
-- This file reflects the real codebase; update as features ship. 
+- **CDN Libraries:** svg.js, paper.js, qrcode.js, gsap all loaded
+- **Paper.js:** Used for boolean operations and path offset
+- **GSAP:** Used in Animator tool when available (optional)
+- **SVG.js:** Loaded and available for future enhancements
+- This file reflects the real codebase; update as features ship.
+
+---
+
+## 🔗 Related Documentation
+
+- **FEATURE_NOTES.md** - Complete feature reference guide
+- **FEATURE_EXPLANATIONS.md** - Detailed feature explanations (aspirational)
+- **UPDATE_NOTES.md** - Latest update highlights
+- **UPDATE_LOG.md** - Comprehensive update history 

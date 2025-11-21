@@ -66,17 +66,30 @@ No installation required! Just open `index.html` in a modern web browser.
 
 ### Keyboard Shortcuts
 
+**Editing:**
 - `Ctrl/Cmd + Z` - Undo
 - `Ctrl/Cmd + Y` or `Ctrl/Cmd + Shift + Z` - Redo
-- `ESC` - Cancel shape placement mode
+- `Ctrl/Cmd + C` - Copy selected paths
+- `Ctrl/Cmd + V` - Paste paths
+- `Ctrl/Cmd + D` - Duplicate selected paths
+- `Ctrl/Cmd + A` - Select all paths
+- `Delete` or `Backspace` - Delete selected paths
+- `Escape` - Deselect all / Cancel shape placement mode
+- `Arrow Keys` - Nudge selected objects (with grid snapping if enabled)
+
+**Tool Switching:**
+- `V` - Switch to Workflow Manager (Selection tool)
+- `P` - Switch to Node Editor
 
 ### Mouse Interactions
 
 - **Click and Drag** - Move selected paths (when drag-to-move is enabled in Preview tool)
 - **Click** - Select paths (or multi-select with Shift/Ctrl/Cmd)
+- **Click and Drag (empty space)** - Marquee selection to select multiple paths
 - **Right-click path** - Pick color from path
 - **Middle-click + Drag** - Pan preview
 - **Spacebar + Drag** - Pan preview
+- **Shift + Resize Handle** - Maintain aspect ratio while resizing
 
 ## 🛠️ Tool Guide
 
@@ -87,6 +100,13 @@ No installation required! Just open `index.html` in a modern web browser.
 - Press ESC to cancel placement mode
 - Real-time preview shows the shape while dragging
 
+### Workflow Manager
+- **Selection Controls**: Select All, Deselect All, Invert Selection, Select Similar buttons
+- **Unified Editor**: Edit fill, stroke, transform, and opacity for selected paths in one place
+- **Quick Actions**: Duplicate, Delete, and group management
+- **Visual Feedback**: Selected paths show with highlight effects and resize handles
+- **Path Information**: View and edit path names, groups, and attributes
+
 ### Path Inspector
 - View all paths in your SVG
 - Click "Edit" to modify path data directly
@@ -96,6 +116,15 @@ No installation required! Just open `index.html` in a modern web browser.
 - Automatically detects all colors
 - Click a color swatch to select it
 - Replace all instances or select paths by color
+
+### Preview & Background
+- **Grid Snapping**: Toggle grid snapping on/off, configure grid size (default 10px), show visual grid overlay
+- **Drag-to-Move**: Enable/disable click-and-drag to move selected paths
+- **Position Indicator**: Status bar showing X/Y coordinates during drag operations with grid snapping indicator
+- **Resize Handles**: Visual handles appear around selected objects for easy resizing (8 handles: corners and edges)
+- **Quick Actions Toolbar**: Floating toolbar with Copy, Duplicate, Delete, and alignment buttons (appears near selected objects)
+- **Marquee Selection**: Click and drag on empty space to select multiple paths
+- **Shift+Resize**: Hold Shift while dragging resize handles to maintain aspect ratio
 
 ### Transform Controller
 - Select paths first

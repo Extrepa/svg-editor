@@ -1,6 +1,6 @@
 # SVG Layer Toolkit - Feature Explanations
 
-> Note: This guide is descriptive/aspirational. For the truthful implementation list, see `FEATURE_STATUS.md`.
+> **Note:** This guide is descriptive/aspirational. For the truthful implementation status, see `FEATURE_STATUS.md`. For a quick feature reference, see `FEATURE_NOTES.md`.
 
 ## 📖 Complete Guide to All Features
 

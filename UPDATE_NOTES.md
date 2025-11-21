@@ -2,7 +2,8 @@
 
 **Last Updated:** November 2024  
 **Version:** 2.1 (GSAP Integration)  
-**Repository:** https://github.com/Extrepa/svg-editor
+**Repository:** https://github.com/Extrepa/svg-editor  
+**Related Docs:** See `UPDATE_LOG.md` for complete history, `FEATURE_NOTES.md` for feature reference
 
 ---
 

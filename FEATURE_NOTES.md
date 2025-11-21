@@ -2,7 +2,8 @@
 
 **Complete Feature Reference Guide**  
 **Version:** 2.1  
-**Last Updated:** November 2024
+**Last Updated:** November 2024  
+**Related Docs:** See `FEATURE_EXPLANATIONS.md` for detailed explanations, `FEATURE_STATUS.md` for implementation status
 
 ---
 
