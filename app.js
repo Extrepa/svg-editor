@@ -27,9 +27,17 @@ class SVGLayerToolkit {
         this.snapToPoint = false;
         this.snapDistance = 10; // pixels
         this.gridSize = 10; // Grid size for snapping
+        this.showGridOverlay = false; // Show visual grid overlay
         this.isMarqueeSelecting = false;
         this.marqueeStart = null;
         this.marqueeBox = null;
+        this.gridOverlayGroup = null; // SVG group for grid overlay
+        this.clipboardPaths = []; // Store copied paths for paste
+        this.resizeHandles = []; // Resize handles for selected objects
+        this.isResizing = false;
+        this.resizeHandleType = null; // 'nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'
+        this.resizeStartPoint = null;
+        this.resizeStartBounds = null;
         this.showStartEndIndicators = false;
         this.startEndIndicators = [];
         this.guideLineDragMode = false;
@@ -152,6 +160,20 @@ class SVGLayerToolkit {
             if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key === 'z' || e.key === 'y')) {
                 e.preventDefault();
                 this.redo();
+                return;
+            }
+            
+            // Ctrl/Cmd + C: Copy selected paths
+            if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+                e.preventDefault();
+                this.copySelectedPaths();
+                return;
+            }
+            
+            // Ctrl/Cmd + V: Paste paths
+            if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                e.preventDefault();
+                this.pastePaths();
                 return;
             }
             
@@ -431,6 +453,7 @@ class SVGLayerToolkit {
         wrapper.appendChild(svgClone);
         this.applyBackgroundMods();
         this.setupMarqueeSelection(wrapper, svgClone);
+        this.updateGridOverlay(svgClone);
         
         document.getElementById('previewEmpty').style.display = 'none';
         document.getElementById('previewSvg').style.display = 'flex';
@@ -1806,6 +1829,98 @@ class SVGLayerToolkit {
         this.extractPaths();
         this.extractGroups();
         this.renderSVG();
+        this.loadTool('workflow');
+    }
+
+    copySelectedPaths() {
+        if (this.selectedPaths.size === 0) {
+            return; // Silently fail if nothing selected
+        }
+        
+        // Store serialized path data
+        this.clipboardPaths = [];
+        this.selectedPaths.forEach(pathId => {
+            const path = this.paths.find(p => p.id === pathId);
+            if (!path) return;
+            
+            // Clone the path element and serialize it
+            const cloned = path.element.cloneNode(true);
+            const serializer = new XMLSerializer();
+            const pathData = {
+                svgString: serializer.serializeToString(cloned),
+                transform: path.transform || '',
+                fill: path.fill || 'none',
+                stroke: path.stroke || 'none',
+                strokeWidth: path.strokeWidth || '0',
+                opacity: path.opacity || '1'
+            };
+            this.clipboardPaths.push(pathData);
+        });
+        
+        // Also copy to system clipboard if possible
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            const allPaths = this.clipboardPaths.map(p => p.svgString).join('\n');
+            navigator.clipboard.writeText(allPaths).catch(() => {
+                // Ignore clipboard errors
+            });
+        }
+    }
+
+    pastePaths() {
+        if (this.clipboardPaths.length === 0) {
+            return; // Nothing to paste
+        }
+        
+        this.saveState();
+        const pastedIds = [];
+        
+        this.clipboardPaths.forEach((pathData, index) => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(pathData.svgString, 'image/svg+xml');
+            const pastedPath = doc.documentElement.querySelector('path');
+            
+            if (!pastedPath) return;
+            
+            // Create new ID
+            const newId = `path-${Date.now()}-${index}`;
+            pastedPath.id = newId;
+            
+            // Apply offset to position (offset by 20px for visibility)
+            const offsetX = 20;
+            const offsetY = 20;
+            let newTransform = pathData.transform;
+            
+            if (newTransform) {
+                const matches = newTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                if (matches) {
+                    const tx = parseFloat(matches[1]) + offsetX;
+                    const ty = parseFloat(matches[2]) + offsetY;
+                    newTransform = `translate(${tx},${ty})`;
+                } else {
+                    newTransform = `translate(${offsetX},${offsetY}) ${newTransform}`;
+                }
+            } else {
+                newTransform = `translate(${offsetX},${offsetY})`;
+            }
+            
+            pastedPath.setAttribute('transform', newTransform);
+            
+            // Restore attributes
+            if (pathData.fill !== 'none') pastedPath.setAttribute('fill', pathData.fill);
+            if (pathData.stroke !== 'none') pastedPath.setAttribute('stroke', pathData.stroke);
+            if (pathData.strokeWidth !== '0') pastedPath.setAttribute('stroke-width', pathData.strokeWidth);
+            if (pathData.opacity !== '1') pastedPath.setAttribute('opacity', pathData.opacity);
+            
+            // Add to SVG
+            this.svgElement.appendChild(pastedPath);
+            pastedIds.push(newId);
+        });
+        
+        this.extractPaths();
+        this.selectedPaths.clear();
+        pastedIds.forEach(id => this.selectedPaths.add(id));
+        this.renderSVG();
+        this.updateSelectionVisual();
         this.loadTool('workflow');
     }
 
@@ -7766,8 +7881,9 @@ export default ${componentName};`;
         const svgClone = document.querySelector('#svgWrapper svg');
         if (!svgClone) return;
         
-        // Remove existing start/end indicators
+        // Remove existing start/end indicators and resize handles
         this.hideStartEndIndicators();
+        this.removeResizeHandles();
         
         const paths = svgClone.querySelectorAll('path');
         paths.forEach(path => {
@@ -7784,7 +7900,342 @@ export default ${componentName};`;
                 path.style.filter = '';
             }
         });
+        
+        // Add resize handles for selected paths
+        if (this.selectedPaths.size > 0) {
+            this.addResizeHandles(svgClone);
+        }
+        
         this.scheduleMiniMap();
+    }
+
+    removeResizeHandles() {
+        this.resizeHandles.forEach(handle => {
+            if (handle.parentNode) {
+                handle.parentNode.removeChild(handle);
+            }
+        });
+        this.resizeHandles = [];
+        
+        // Remove bounding box if it exists
+        const bbox = document.querySelector('#selection-bounding-box');
+        if (bbox && bbox.parentNode) {
+            bbox.parentNode.removeChild(bbox);
+        }
+    }
+
+    addResizeHandles(svg) {
+        if (this.selectedPaths.size === 0) return;
+        
+        // Calculate combined bounding box for all selected paths
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        let hasValidBounds = false;
+        
+        this.selectedPaths.forEach(pathId => {
+            const path = this.paths.find(p => p.id === pathId);
+            if (!path) return;
+            
+            try {
+                const bbox = path.element.getBBox();
+                minX = Math.min(minX, bbox.x);
+                minY = Math.min(minY, bbox.y);
+                maxX = Math.max(maxX, bbox.x + bbox.width);
+                maxY = Math.max(maxY, bbox.y + bbox.height);
+                hasValidBounds = true;
+            } catch (e) {
+                // Skip paths without valid bounds
+            }
+        });
+        
+        if (!hasValidBounds) return;
+        
+        const width = maxX - minX;
+        const height = maxY - minY;
+        
+        // Add padding for handles
+        const padding = 5;
+        const boxX = minX - padding;
+        const boxY = minY - padding;
+        const boxWidth = width + padding * 2;
+        const boxHeight = height + padding * 2;
+        
+        const svgNS = 'http://www.w3.org/2000/svg';
+        
+        // Create bounding box rectangle
+        const bboxRect = document.createElementNS(svgNS, 'rect');
+        bboxRect.id = 'selection-bounding-box';
+        bboxRect.setAttribute('x', boxX);
+        bboxRect.setAttribute('y', boxY);
+        bboxRect.setAttribute('width', boxWidth);
+        bboxRect.setAttribute('height', boxHeight);
+        bboxRect.setAttribute('fill', 'none');
+        bboxRect.setAttribute('stroke', '#4a90e2');
+        bboxRect.setAttribute('stroke-width', '2');
+        bboxRect.setAttribute('stroke-dasharray', '5,5');
+        bboxRect.style.pointerEvents = 'none';
+        svg.appendChild(bboxRect);
+        
+        // Create resize handles (corners and edges)
+        const handleSize = 8;
+        const handlePositions = [
+            { type: 'nw', x: boxX, y: boxY },
+            { type: 'ne', x: boxX + boxWidth, y: boxY },
+            { type: 'sw', x: boxX, y: boxY + boxHeight },
+            { type: 'se', x: boxX + boxWidth, y: boxY + boxHeight },
+            { type: 'n', x: boxX + boxWidth / 2, y: boxY },
+            { type: 's', x: boxX + boxWidth / 2, y: boxY + boxHeight },
+            { type: 'w', x: boxX, y: boxY + boxHeight / 2 },
+            { type: 'e', x: boxX + boxWidth, y: boxY + boxHeight / 2 }
+        ];
+        
+        handlePositions.forEach(pos => {
+            const handle = document.createElementNS(svgNS, 'rect');
+            handle.setAttribute('x', pos.x - handleSize / 2);
+            handle.setAttribute('y', pos.y - handleSize / 2);
+            handle.setAttribute('width', handleSize);
+            handle.setAttribute('height', handleSize);
+            handle.setAttribute('fill', '#4a90e2');
+            handle.setAttribute('stroke', '#ffffff');
+            handle.setAttribute('stroke-width', '1');
+            handle.dataset.handleType = pos.type;
+            handle.style.cursor = this.getResizeCursor(pos.type);
+            handle.style.pointerEvents = 'all';
+            
+            // Make handle draggable
+            this.makeResizeHandleDraggable(handle, svg, boxX, boxY, boxWidth, boxHeight);
+            
+            svg.appendChild(handle);
+            this.resizeHandles.push(handle);
+        });
+    }
+
+    getResizeCursor(type) {
+        const cursors = {
+            'nw': 'nw-resize',
+            'ne': 'ne-resize',
+            'sw': 'sw-resize',
+            'se': 'se-resize',
+            'n': 'n-resize',
+            's': 's-resize',
+            'e': 'e-resize',
+            'w': 'w-resize'
+        };
+        return cursors[type] || 'default';
+    }
+
+    makeResizeHandleDraggable(handle, svg, startX, startY, startWidth, startHeight) {
+        let isDragging = false;
+        
+        handle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            isDragging = true;
+            this.isResizing = true;
+            this.resizeHandleType = handle.dataset.handleType;
+            this.resizeStartPoint = this.screenToSVG(svg, e.clientX, e.clientY);
+            this.resizeStartBounds = { x: startX, y: startY, width: startWidth, height: startHeight };
+            
+            document.body.style.userSelect = 'none';
+            
+            const mouseMoveHandler = (moveE) => {
+                if (!isDragging) return;
+                
+                const currentPoint = this.screenToSVG(svg, moveE.clientX, moveE.clientY);
+                const deltaX = currentPoint.x - this.resizeStartPoint.x;
+                const deltaY = currentPoint.y - this.resizeStartPoint.y;
+                
+                // Apply grid snapping if enabled
+                if (this.snapToGrid) {
+                    deltaX = Math.round(deltaX / this.gridSize) * this.gridSize;
+                    deltaY = Math.round(deltaY / this.gridSize) * this.gridSize;
+                }
+                
+                // Calculate new bounds based on handle type
+                let newX = startX, newY = startY, newWidth = startWidth, newHeight = startHeight;
+                
+                switch (this.resizeHandleType) {
+                    case 'nw':
+                        newX = startX + deltaX;
+                        newY = startY + deltaY;
+                        newWidth = startWidth - deltaX;
+                        newHeight = startHeight - deltaY;
+                        break;
+                    case 'ne':
+                        newY = startY + deltaY;
+                        newWidth = startWidth + deltaX;
+                        newHeight = startHeight - deltaY;
+                        break;
+                    case 'sw':
+                        newX = startX + deltaX;
+                        newWidth = startWidth - deltaX;
+                        newHeight = startHeight + deltaY;
+                        break;
+                    case 'se':
+                        newWidth = startWidth + deltaX;
+                        newHeight = startHeight + deltaY;
+                        break;
+                    case 'n':
+                        newY = startY + deltaY;
+                        newHeight = startHeight - deltaY;
+                        break;
+                    case 's':
+                        newHeight = startHeight + deltaY;
+                        break;
+                    case 'w':
+                        newX = startX + deltaX;
+                        newWidth = startWidth - deltaX;
+                        break;
+                    case 'e':
+                        newWidth = startWidth + deltaX;
+                        break;
+                }
+                
+                // Update visual preview (bounding box)
+                const bbox = document.querySelector('#selection-bounding-box');
+                if (bbox) {
+                    bbox.setAttribute('x', newX);
+                    bbox.setAttribute('y', newY);
+                    bbox.setAttribute('width', newWidth);
+                    bbox.setAttribute('height', newHeight);
+                }
+                
+                // Update handle positions
+                this.updateResizeHandlePositions(newX, newY, newWidth, newHeight);
+            };
+            
+            const mouseUpHandler = (upE) => {
+                if (!isDragging) return;
+                
+                isDragging = false;
+                this.isResizing = false;
+                document.body.style.userSelect = '';
+                
+                // Calculate final bounds
+                const currentPoint = this.screenToSVG(svg, upE.clientX, upE.clientY);
+                let deltaX = currentPoint.x - this.resizeStartPoint.x;
+                let deltaY = currentPoint.y - this.resizeStartPoint.y;
+                
+                if (this.snapToGrid) {
+                    deltaX = Math.round(deltaX / this.gridSize) * this.gridSize;
+                    deltaY = Math.round(deltaY / this.gridSize) * this.gridSize;
+                }
+                
+                // Apply resize to actual paths
+                this.applyResizeToPaths(deltaX, deltaY);
+                
+                document.removeEventListener('mousemove', mouseMoveHandler);
+                document.removeEventListener('mouseup', mouseUpHandler);
+            };
+            
+            document.addEventListener('mousemove', mouseMoveHandler);
+            document.addEventListener('mouseup', mouseUpHandler);
+        });
+    }
+
+    updateResizeHandlePositions(x, y, width, height) {
+        const handleSize = 8;
+        const positions = [
+            { type: 'nw', x: x, y: y },
+            { type: 'ne', x: x + width, y: y },
+            { type: 'sw', x: x, y: y + height },
+            { type: 'se', x: x + width, y: y + height },
+            { type: 'n', x: x + width / 2, y: y },
+            { type: 's', x: x + width / 2, y: y + height },
+            { type: 'w', x: x, y: y + height / 2 },
+            { type: 'e', x: x + width, y: y + height / 2 }
+        ];
+        
+        positions.forEach((pos, index) => {
+            if (this.resizeHandles[index]) {
+                this.resizeHandles[index].setAttribute('x', pos.x - handleSize / 2);
+                this.resizeHandles[index].setAttribute('y', pos.y - handleSize / 2);
+            }
+        });
+    }
+
+    applyResizeToPaths(deltaX, deltaY) {
+        if (this.selectedPaths.size === 0 || !this.resizeHandleType) return;
+        
+        this.saveState();
+        
+        // Calculate scale factors based on handle type and original bounds
+        const originalBounds = this.resizeStartBounds;
+        let scaleX = 1, scaleY = 1, offsetX = 0, offsetY = 0;
+        
+        switch (this.resizeHandleType) {
+            case 'nw':
+                scaleX = (originalBounds.width - deltaX) / originalBounds.width;
+                scaleY = (originalBounds.height - deltaY) / originalBounds.height;
+                offsetX = deltaX;
+                offsetY = deltaY;
+                break;
+            case 'ne':
+                scaleX = (originalBounds.width + deltaX) / originalBounds.width;
+                scaleY = (originalBounds.height - deltaY) / originalBounds.height;
+                offsetY = deltaY;
+                break;
+            case 'sw':
+                scaleX = (originalBounds.width - deltaX) / originalBounds.width;
+                scaleY = (originalBounds.height + deltaY) / originalBounds.height;
+                offsetX = deltaX;
+                break;
+            case 'se':
+                scaleX = (originalBounds.width + deltaX) / originalBounds.width;
+                scaleY = (originalBounds.height + deltaY) / originalBounds.height;
+                break;
+            case 'n':
+                scaleY = (originalBounds.height - deltaY) / originalBounds.height;
+                offsetY = deltaY;
+                break;
+            case 's':
+                scaleY = (originalBounds.height + deltaY) / originalBounds.height;
+                break;
+            case 'w':
+                scaleX = (originalBounds.width - deltaX) / originalBounds.width;
+                offsetX = deltaX;
+                break;
+            case 'e':
+                scaleX = (originalBounds.width + deltaX) / originalBounds.width;
+                break;
+        }
+        
+        // Apply transform to each selected path
+        this.selectedPaths.forEach(pathId => {
+            const path = this.paths.find(p => p.id === pathId);
+            if (!path) return;
+            
+            try {
+                const bbox = path.element.getBBox();
+                const centerX = bbox.x + bbox.width / 2;
+                const centerY = bbox.y + bbox.height / 2;
+                
+                // Calculate new transform
+                const currentTransform = path.transform || '';
+                let newTransform = '';
+                
+                // Apply scale and translate
+                if (scaleX !== 1 || scaleY !== 1) {
+                    newTransform += `translate(${centerX},${centerY}) scale(${scaleX},${scaleY}) translate(${-centerX},${-centerY})`;
+                }
+                
+                if (offsetX !== 0 || offsetY !== 0) {
+                    newTransform += ` translate(${offsetX},${offsetY})`;
+                }
+                
+                if (currentTransform) {
+                    newTransform = currentTransform + ' ' + newTransform;
+                }
+                
+                path.element.setAttribute('transform', newTransform.trim());
+                path.transform = newTransform.trim();
+            } catch (e) {
+                // Skip paths that can't be resized
+            }
+        });
+        
+        this.extractPaths();
+        this.renderSVG();
     }
 
     addStartEndIndicators(pathElement, svg) {
@@ -9277,11 +9728,25 @@ export default ${componentName};`;
                         When enabled, click and drag selected paths to move them. Disable to use click-only selection.
                     </p>
                     <label class="form-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                        <input type="checkbox" id="snapToGridPreview" ${this.snapToGrid ? 'checked' : ''} onchange="app.snapToGrid = this.checked" style="cursor: pointer;">
+                        <input type="checkbox" id="snapToGridPreview" ${this.snapToGrid ? 'checked' : ''} onchange="app.toggleGridSnap(this.checked)" style="cursor: pointer;">
                         <span>Snap to grid</span>
                     </label>
+                    <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem; margin-bottom: 0.75rem;">
+                        When enabled, objects snap to a grid when moved. Helps with alignment.
+                    </p>
+                    <div style="margin-bottom: 0.75rem;">
+                        <label class="form-label" style="font-size: 0.75rem;">Grid Size (px)</label>
+                        <input type="number" class="form-input" id="gridSizeInput" value="${this.gridSize}" min="5" max="100" step="5" onchange="app.setGridSize(parseInt(this.value) || 10)">
+                        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; margin-bottom: 0;">
+                            Size of the snap grid. Smaller = more precision.
+                        </p>
+                    </div>
+                    <label class="form-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="showGridOverlay" ${this.showGridOverlay ? 'checked' : ''} onchange="app.toggleGridOverlay(this.checked)" style="cursor: pointer;">
+                        <span>Show grid overlay</span>
+                    </label>
                     <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem; margin-bottom: 0;">
-                        When enabled, objects snap to a ${this.gridSize}px grid when moved. Helps with alignment.
+                        Display grid lines on the canvas when grid snapping is enabled.
                     </p>
                 </div>
                 
@@ -9318,6 +9783,129 @@ export default ${componentName};`;
                 });
             }
         }
+    }
+
+    toggleGridSnap(enabled) {
+        this.snapToGrid = enabled;
+        // Update grid overlay if needed
+        const wrapper = document.getElementById('svgWrapper');
+        if (wrapper) {
+            const svg = wrapper.querySelector('svg');
+            if (svg) {
+                this.updateGridOverlay(svg);
+            }
+        }
+    }
+
+    setGridSize(size) {
+        this.gridSize = Math.max(5, Math.min(100, size));
+        // Update grid overlay if visible
+        if (this.showGridOverlay) {
+            const wrapper = document.getElementById('svgWrapper');
+            if (wrapper) {
+                const svg = wrapper.querySelector('svg');
+                if (svg) {
+                    this.updateGridOverlay(svg);
+                }
+            }
+        }
+        // Update preview tool to show new grid size
+        if (this.currentTool === 'preview') {
+            this.loadTool('preview');
+        }
+    }
+
+    toggleGridOverlay(enabled) {
+        this.showGridOverlay = enabled;
+        const wrapper = document.getElementById('svgWrapper');
+        if (wrapper) {
+            const svg = wrapper.querySelector('svg');
+            if (svg) {
+                this.updateGridOverlay(svg);
+            }
+        }
+    }
+
+    updateGridOverlay(svg) {
+        if (!svg) return;
+        
+        // Remove existing grid overlay
+        const existing = svg.querySelector('#grid-overlay-group');
+        if (existing) {
+            existing.remove();
+        }
+        
+        // Only show overlay if enabled and grid snapping is on
+        if (!this.showGridOverlay || !this.snapToGrid) {
+            this.gridOverlayGroup = null;
+            return;
+        }
+        
+        // Get viewBox or calculate bounds
+        let minX = 0, minY = 0, maxX = 1000, maxY = 1000;
+        const viewBox = svg.getAttribute('viewBox');
+        if (viewBox) {
+            const [x, y, w, h] = viewBox.split(' ').map(Number);
+            minX = x || 0;
+            minY = y || 0;
+            maxX = minX + (w || 1000);
+            maxY = minY + (h || 1000);
+        } else {
+            try {
+                const bbox = svg.getBBox();
+                minX = bbox.x;
+                minY = bbox.y;
+                maxX = bbox.x + bbox.width;
+                maxY = bbox.y + bbox.height;
+            } catch (e) {
+                // Use defaults
+            }
+        }
+        
+        // Expand bounds to show more grid
+        const padding = this.gridSize * 10;
+        minX = Math.floor((minX - padding) / this.gridSize) * this.gridSize;
+        minY = Math.floor((minY - padding) / this.gridSize) * this.gridSize;
+        maxX = Math.ceil((maxX + padding) / this.gridSize) * this.gridSize;
+        maxY = Math.ceil((maxY + padding) / this.gridSize) * this.gridSize;
+        
+        // Create grid overlay group
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const gridGroup = document.createElementNS(svgNS, 'g');
+        gridGroup.id = 'grid-overlay-group';
+        gridGroup.style.pointerEvents = 'none';
+        
+        // Create grid lines
+        const gridColor = 'rgba(74, 144, 226, 0.2)';
+        const gridStrokeWidth = 0.5;
+        
+        // Vertical lines
+        for (let x = minX; x <= maxX; x += this.gridSize) {
+            const line = document.createElementNS(svgNS, 'line');
+            line.setAttribute('x1', x);
+            line.setAttribute('y1', minY);
+            line.setAttribute('x2', x);
+            line.setAttribute('y2', maxY);
+            line.setAttribute('stroke', gridColor);
+            line.setAttribute('stroke-width', gridStrokeWidth);
+            gridGroup.appendChild(line);
+        }
+        
+        // Horizontal lines
+        for (let y = minY; y <= maxY; y += this.gridSize) {
+            const line = document.createElementNS(svgNS, 'line');
+            line.setAttribute('x1', minX);
+            line.setAttribute('y1', y);
+            line.setAttribute('x2', maxX);
+            line.setAttribute('y2', y);
+            line.setAttribute('stroke', gridColor);
+            line.setAttribute('stroke-width', gridStrokeWidth);
+            gridGroup.appendChild(line);
+        }
+        
+        // Insert grid overlay at the beginning (behind all content)
+        svg.insertBefore(gridGroup, svg.firstChild);
+        this.gridOverlayGroup = gridGroup;
     }
 
     updatePreviewZoom() {
