@@ -1,0 +1,16 @@
+{
+  "name": "svg_paths-copy",
+  "version": "2.1.0",
+  "description": "**Photoshop for SVGs** - A comprehensive suite of 25+ professional tools for complete SVG manipulation, editing, and creation.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "paper": "^0.12.18"
+  }
+}

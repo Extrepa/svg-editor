@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Layer Toolkit - Photoshop for SVGs</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- SVG.js Library for enhanced SVG manipulation -->
+    <script src="https://cdn.jsdelivr.net/npm/@svgdotjs/svg.js@3.2.0/dist/svg.min.js"></script>
+    <!-- Paper.js Library for boolean operations and advanced path manipulation -->
+    <script src="https://cdn.jsdelivr.net/npm/paper@0.12.18/dist/paper-full.min.js"></script>
+    <!-- QR Code Generator Library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <!-- GSAP (GreenSock Animation Platform) for advanced SVG animations -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1 class="app-title">🎨 SVG Layer Toolkit</h1>
+                <p class="app-subtitle">Photoshop for SVGs - Complete SVG Manipulation Suite</p>
+            </div>
+            <div class="header-actions">
+                <button id="darkModeToggle" class="btn btn-icon" title="Toggle Dark Mode">🌙</button>
+                <input type="file" id="fileInput" accept=".svg" style="display: none;">
+                <button id="loadFileBtn" class="btn btn-primary">📁 Load SVG</button>
+                <button id="saveFileBtn" class="btn btn-secondary" disabled>💾 Save SVG</button>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Left Sidebar - Tools Navigation -->
+            <aside class="tools-sidebar">
+                <nav class="tools-nav">
+                    <div class="nav-section">
+                        <h3 class="nav-section-title">Core Workflow</h3>
+                        <button class="nav-item active" data-tool="preview">
+                            <span class="nav-icon">👁️</span>
+                            <span class="nav-label">Preview</span>
+                        </button>
+                        <button class="nav-item" data-tool="workflow">
+                            <span class="nav-icon">🔄</span>
+                            <span class="nav-label">Workflow Manager</span>
+                        </button>
+                        <button class="nav-item" data-tool="shapes">
+                            <span class="nav-icon">⭐</span>
+                            <span class="nav-label">Shape Library</span>
+                        </button>
+                    </div>
+                    <div class="nav-section">
+                        <h3 class="nav-section-title">Editing Tools</h3>
+                        <button class="nav-item" data-tool="color-replacer">
+                            <span class="nav-icon">🎨</span>
+                            <span class="nav-label">Color Replacer</span>
+                        </button>
+                        <button class="nav-item" data-tool="transform">
+                            <span class="nav-icon">↔️</span>
+                            <span class="nav-label">Transform</span>
+                        </button>
+                        <button class="nav-item" data-tool="attributes">
+                            <span class="nav-icon">⚙️</span>
+                            <span class="nav-label">Attributes</span>
+                        </button>
+                        <button class="nav-item" data-tool="path-merger">
+                            <span class="nav-icon">🔗</span>
+                            <span class="nav-label">Path Merger</span>
+                        </button>
+                        <button class="nav-item" data-tool="node-editor">
+                            <span class="nav-icon">✏️</span>
+                            <span class="nav-label">Node Editor</span>
+                        </button>
+                        <button class="nav-item" data-tool="text-to-path">
+                            <span class="nav-icon">🔤</span>
+                            <span class="nav-label">Text to Path</span>
+                        </button>
+                        <button class="nav-item" data-tool="path-offset">
+                            <span class="nav-icon">📏</span>
+                            <span class="nav-label">Path Offset</span>
+                        </button>
+                        <button class="nav-item" data-tool="boolean-ops">
+                            <span class="nav-icon">✂️</span>
+                            <span class="nav-label">Boolean Ops</span>
+                        </button>
+                        <button class="nav-item" data-tool="alignment">
+                            <span class="nav-icon">📐</span>
+                            <span class="nav-label">Alignment Tools</span>
+                        </button>
+                    </div>
+                    <div class="nav-section">
+                        <h3 class="nav-section-title">Advanced Tools</h3>
+                        <button class="nav-item" data-tool="image-tracer">
+                            <span class="nav-icon">🖼️</span>
+                            <span class="nav-label">Image Tracer</span>
+                        </button>
+                        <button class="nav-item" data-tool="animator">
+                            <span class="nav-icon">✨</span>
+                            <span class="nav-label">Animator</span>
+                        </button>
+                        <button class="nav-item" data-tool="optimizer">
+                            <span class="nav-icon">⚡</span>
+                            <span class="nav-label">Optimizer</span>
+                        </button>
+                        <button class="nav-item" data-tool="path-simplifier">
+                            <span class="nav-icon">📏</span>
+                            <span class="nav-label">Path Simplifier</span>
+                        </button>
+                        <button class="nav-item" data-tool="token-injector">
+                            <span class="nav-icon">💉</span>
+                            <span class="nav-label">Token Injector</span>
+                        </button>
+                        <button class="nav-item" data-tool="comparator">
+                            <span class="nav-icon">🔀</span>
+                            <span class="nav-label">Comparator</span>
+                        </button>
+                        <button class="nav-item" data-tool="generators">
+                            <span class="nav-icon">🎲</span>
+                            <span class="nav-label">Generators</span>
+                        </button>
+                    </div>
+                    <div class="nav-section">
+                        <h3 class="nav-section-title">Precision & Cleanup</h3>
+                        <button class="nav-item" data-tool="cleanup">
+                            <span class="nav-icon">🧹</span>
+                            <span class="nav-label">Cleanup Tools</span>
+                        </button>
+                        <button class="nav-item" data-tool="measurement">
+                            <span class="nav-icon">📏</span>
+                            <span class="nav-label">Measurement</span>
+                        </button>
+                    </div>
+                    <div class="nav-section">
+                        <h3 class="nav-section-title">Export & System</h3>
+                        <button class="nav-item" data-tool="export">
+                            <span class="nav-icon">📤</span>
+                            <span class="nav-label">Export Manager</span>
+                        </button>
+                        <button class="nav-item" data-tool="templates">
+                            <span class="nav-icon">📋</span>
+                            <span class="nav-label">Templates</span>
+                        </button>
+                        <button class="nav-item" data-tool="file-patch">
+                            <span class="nav-icon">🔧</span>
+                            <span class="nav-label">File Patch</span>
+                        </button>
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- Center - Preview Area -->
+            <main class="preview-area">
+                <div class="preview-container" id="previewContainer">
+                    <div class="preview-empty" id="previewEmpty">
+                        <div class="empty-content">
+                            <div class="empty-icon">📐</div>
+                            <h2>No SVG Loaded</h2>
+                            <p>Load an SVG file or choose a template to get started</p>
+                            <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                                Load SVG File
+                            </button>
+                        </div>
+                    </div>
+                    <div class="preview-svg" id="previewSvg" style="display: none;">
+                        <div class="svg-wrapper" id="svgWrapper"></div>
+                        <div class="zoom-controls">
+                            <button class="btn btn-small" id="zoomInBtn" title="Zoom In">+</button>
+                            <button class="btn btn-small" id="zoomOutBtn" title="Zoom Out">−</button>
+                        </div>
+                    </div>
+                    <div class="mini-map" id="miniMap" style="display: none;">
+                        <div class="mini-map-header">
+                            <span>Mini-map</span>
+                            <span id="miniMapZoom">100%</span>
+                        </div>
+                        <div class="mini-map-content" id="miniMapContent"></div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Right Sidebar - Tool Panels -->
+            <aside class="tool-panel">
+                <div class="panel-header">
+                    <h2 id="panelTitle">Preview & Background</h2>
+                    <button class="btn-icon" id="closePanelBtn">✕</button>
+                </div>
+                <div class="panel-content" id="toolPanel">
+                    <!-- Tool panels will be dynamically loaded here -->
+                </div>
+            </aside>
+        </div>
+
+        <!-- History Bar -->
+        <div class="history-bar">
+            <button class="btn btn-small" id="undoBtn" disabled>↶ Undo</button>
+            <button class="btn btn-small" id="redoBtn" disabled>↷ Redo</button>
+            <span class="history-info" id="historyInfo">No history</span>
+            <div class="history-list" id="historyList"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
