@@ -321,6 +321,27 @@ body {
     overflow: visible;
 }
 
+.status-bar {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: var(--border-radius);
+    font-size: 0.75rem;
+    font-family: 'Courier New', monospace;
+    z-index: 200;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .status-bar {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--text-primary);
+}
+
 .zoom-controls {
     position: absolute;
     top: 1rem;
@@ -846,6 +867,12 @@ body {
 .btn-icon-compact:disabled {
     opacity: 0.3;
     cursor: not-allowed;
+}
+
+/* Loading spinner animation */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 .btn-icon-compact:disabled:hover {

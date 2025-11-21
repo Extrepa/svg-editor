@@ -38,6 +38,7 @@ class SVGLayerToolkit {
         this.resizeHandleType = null; // 'nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'
         this.resizeStartPoint = null;
         this.resizeStartBounds = null;
+        this.isNudging = false; // Track if nudging with arrow keys
         this.showStartEndIndicators = false;
         this.startEndIndicators = [];
         this.guideLineDragMode = false;
@@ -191,6 +192,54 @@ class SVGLayerToolkit {
                 return;
             }
             
+            // Ctrl/Cmd + D: Duplicate selected paths
+            if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+                e.preventDefault();
+                if (this.selectedPaths.size > 0) {
+                    this.duplicateSelectedPaths();
+                }
+                return;
+            }
+            
+            // Ctrl/Cmd + A: Select all paths
+            if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+                e.preventDefault();
+                this.selectAll();
+                return;
+            }
+            
+            // Escape: Deselect all
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.deselectAll();
+                return;
+            }
+            
+            // Arrow keys: Nudge selected objects
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && this.selectedPaths.size > 0) {
+                e.preventDefault();
+                let deltaX = 0, deltaY = 0;
+                const nudgeAmount = this.snapToGrid ? this.gridSize : 1;
+                
+                switch (e.key) {
+                    case 'ArrowUp':
+                        deltaY = -nudgeAmount;
+                        break;
+                    case 'ArrowDown':
+                        deltaY = nudgeAmount;
+                        break;
+                    case 'ArrowLeft':
+                        deltaX = -nudgeAmount;
+                        break;
+                    case 'ArrowRight':
+                        deltaX = nudgeAmount;
+                        break;
+                }
+                
+                this.nudgeSelectedPaths(deltaX, deltaY);
+                return;
+            }
+            
             // [ and ]: Send backward / Bring forward (layer reordering)
             if (e.key === '[' && this.selectedPaths.size > 0) {
                 e.preventDefault();
@@ -322,19 +371,49 @@ class SVGLayerToolkit {
         const file = event.target.files[0];
         if (!file) return;
         
-        const text = await file.text();
-        this.parseSVG(text);
+        try {
+            const text = await file.text();
+            if (!text || text.trim().length === 0) {
+                this.showError('File is empty');
+                return;
+            }
+            this.parseSVG(text);
+        } catch (error) {
+            this.showError(`Error reading file: ${error.message}`);
+        }
     }
 
     parseSVG(svgText) {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(svgText, 'image/svg+xml');
-        const svg = doc.documentElement;
-        
-        if (svg.tagName !== 'svg') {
-            alert('Invalid SVG file');
+        if (!svgText || typeof svgText !== 'string' || svgText.trim().length === 0) {
+            this.showError('Invalid SVG: File is empty');
             return;
         }
+        
+        let parser, doc, svg;
+        try {
+            parser = new DOMParser();
+            doc = parser.parseFromString(svgText, 'image/svg+xml');
+            
+            // Check for parsing errors
+            const parserError = doc.querySelector('parsererror');
+            if (parserError) {
+                this.showError('Invalid SVG: XML parsing error. Please check the file format.');
+                return;
+            }
+            
+            svg = doc.documentElement;
+            
+            if (!svg || svg.tagName !== 'svg') {
+                this.showError('Invalid SVG: Root element must be <svg>');
+                return;
+            }
+        } catch (error) {
+            this.showError(`Error parsing SVG: ${error.message}`);
+            return;
+        }
+        
+        // Clear any previous errors
+        this.hideError();
 
         this.pathIdCounter = 0;
         this.history = [];
@@ -342,15 +421,72 @@ class SVGLayerToolkit {
         
         this.svgData = svgText;
         this.svgElement = svg;
-        this.extractPaths();
-        this.extractGroups();
-        this.saveState();
-        this.renderSVG();
-        this.applyBackgroundMods();
-        // Set default zoom to fit viewBox with padding
-        setTimeout(() => this.fitToScreen(), 100);
-        this.updateUI();
-        this.selectionSource = null;
+        
+        try {
+            this.extractPaths();
+            this.extractGroups();
+            this.saveState();
+            this.renderSVG();
+            this.applyBackgroundMods();
+            // Set default zoom to fit viewBox with padding
+            setTimeout(() => {
+                try {
+                    this.fitToScreen();
+                } catch (e) {
+                    console.warn('Could not fit to screen:', e);
+                }
+            }, 100);
+            this.updateUI();
+            this.selectionSource = null;
+        } catch (error) {
+            this.showError(`Error processing SVG: ${error.message}`);
+            console.error('SVG processing error:', error);
+        }
+    }
+
+    showError(message) {
+        // Remove existing error
+        this.hideError();
+        
+        // Create error display
+        const errorDiv = document.createElement('div');
+        errorDiv.id = 'svgErrorDisplay';
+        errorDiv.style.cssText = `
+            position: absolute;
+            top: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(220, 53, 69, 0.95);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            max-width: 500px;
+            text-align: center;
+            font-size: 0.875rem;
+        `;
+        errorDiv.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 0.5rem; justify-content: space-between;">
+                <span>⚠️ ${message}</span>
+                <button onclick="app.hideError()" style="background: none; border: none; color: white; cursor: pointer; font-size: 1.2rem; padding: 0 0.5rem;">×</button>
+            </div>
+        `;
+        
+        const previewContainer = document.getElementById('previewContainer');
+        if (previewContainer) {
+            previewContainer.appendChild(errorDiv);
+        }
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => this.hideError(), 5000);
+    }
+
+    hideError() {
+        const errorDiv = document.getElementById('svgErrorDisplay');
+        if (errorDiv && errorDiv.parentNode) {
+            errorDiv.parentNode.removeChild(errorDiv);
+        }
     }
 
     extractPaths() {
@@ -559,7 +695,34 @@ class SVGLayerToolkit {
                         deltaY = Math.round(deltaY / this.gridSize) * this.gridSize;
                     }
                     
-                    // Update all selected paths
+                    // Update position indicator
+                    if (this.dragStartPositions.length > 0) {
+                        const firstStartPos = this.dragStartPositions[0];
+                        if (firstStartPos) {
+                            const newX = firstStartPos.x + deltaX;
+                            const newY = firstStartPos.y + deltaY;
+                            this.updatePositionIndicator(newX, newY);
+                        }
+                    }
+                    
+                    // Create drag preview (ghost paths) if they don't exist
+                    if (!this.dragPreviewPaths || this.dragPreviewPaths.length === 0) {
+                        this.dragPreviewPaths = [];
+                        this.draggedPaths.forEach(pathId => {
+                            const previewPath = svgClone.querySelector(`#${pathId}`);
+                            if (previewPath) {
+                                const ghost = previewPath.cloneNode(true);
+                                ghost.style.opacity = '0.4';
+                                ghost.style.filter = 'drop-shadow(0 0 4px rgba(74, 144, 226, 0.6))';
+                                ghost.style.pointerEvents = 'none';
+                                ghost.id = `ghost-${pathId}`;
+                                svgClone.appendChild(ghost);
+                                this.dragPreviewPaths.push(ghost);
+                            }
+                        });
+                    }
+                    
+                    // Update all selected paths and preview
                     this.draggedPaths.forEach((pathId, index) => {
                         const startPos = this.dragStartPositions[index];
                         if (!startPos) return;
@@ -587,6 +750,12 @@ class SVGLayerToolkit {
                         const previewPath = svgClone.querySelector(`#${pathId}`);
                         if (previewPath) {
                             previewPath.setAttribute('transform', newTransform);
+                        }
+                        
+                        // Update ghost preview
+                        const ghost = svgClone.querySelector(`#ghost-${pathId}`);
+                        if (ghost) {
+                            ghost.setAttribute('transform', newTransform);
                         }
                     });
                 };
@@ -687,9 +856,22 @@ class SVGLayerToolkit {
                         this.switchTool('workflow');
                     }
                     
+                    // Clean up drag preview
+                    if (this.dragPreviewPaths) {
+                        this.dragPreviewPaths.forEach(ghost => {
+                            if (ghost.parentNode) {
+                                ghost.parentNode.removeChild(ghost);
+                            }
+                        });
+                        this.dragPreviewPaths = [];
+                    }
+                    
                     // Clean up
                     document.removeEventListener('mousemove', mouseMoveHandler);
                     document.removeEventListener('mouseup', mouseUpHandler);
+                    
+                    // Hide position indicator
+                    this.hidePositionIndicator();
                     
                     // Reset cursor
                     paths.forEach(p => {
@@ -842,6 +1024,33 @@ class SVGLayerToolkit {
                         marqueeBox.setAttribute('width', width);
                         marqueeBox.setAttribute('height', height);
                     }
+                    
+                    // Highlight paths that intersect with marquee box
+                    if (width > 5 && height > 5) {
+                        const rect = { x, y, width, height };
+                        const paths = svg.querySelectorAll('path');
+                        paths.forEach(path => {
+                            try {
+                                const bbox = path.getBBox();
+                                const intersects = !(bbox.x + bbox.width < rect.x || 
+                                                    bbox.x > rect.x + rect.width ||
+                                                    bbox.y + bbox.height < rect.y ||
+                                                    bbox.y > rect.y + rect.height);
+                                
+                                if (intersects && !this.selectedPaths.has(path.id)) {
+                                    // Highlight intersecting paths
+                                    path.style.opacity = '0.6';
+                                    path.style.filter = 'drop-shadow(0 0 4px rgba(74, 144, 226, 0.8))';
+                                } else if (!intersects && !this.selectedPaths.has(path.id)) {
+                                    // Reset non-intersecting paths
+                                    path.style.opacity = '';
+                                    path.style.filter = '';
+                                }
+                            } catch (e) {
+                                // Skip paths without valid bounds
+                            }
+                        });
+                    }
                 };
                 
                 const mouseUpHandler = (upE) => {
@@ -886,10 +1095,21 @@ class SVGLayerToolkit {
                         }
                         
                         // Remove marquee box
-                        marqueeBox.parentNode.removeChild(marqueeBox);
-                    }
-                    marqueeBox = null;
-                    marqueeStart = null;
+                        if (marqueeBox && marqueeBox.parentNode) {
+                            marqueeBox.parentNode.removeChild(marqueeBox);
+                        }
+                        
+                        // Reset all path highlights
+                        const paths = svg.querySelectorAll('path');
+                        paths.forEach(path => {
+                            if (!this.selectedPaths.has(path.id)) {
+                                path.style.opacity = '';
+                                path.style.filter = '';
+                            }
+                        });
+                        
+                        marqueeBox = null;
+                        marqueeStart = null;
                     
                     document.removeEventListener('mousemove', mouseMoveHandler);
                     document.removeEventListener('mouseup', mouseUpHandler);
@@ -1157,11 +1377,16 @@ class SVGLayerToolkit {
             
             ${selectedCount > 0 ? `
                 <div class="form-group workflow-editor" style="padding: 1.5rem; background: rgba(74, 144, 226, 0.1); border-radius: var(--border-radius); border: 2px solid var(--primary-color); margin-bottom: 1.5rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                         <div>
                             <strong style="font-size: 1.125rem; color: var(--primary-color);">${selectedCount} Path(s) Selected</strong>
                         </div>
                         <button class="btn btn-small" onclick="app.deselectAll()">Clear Selection</button>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+                        <button class="btn btn-small" onclick="app.selectAll()">Select All (${this.paths.length})</button>
+                        <button class="btn btn-small" onclick="app.invertSelection()">Invert Selection</button>
+                        <button class="btn btn-small" onclick="app.selectSimilarPaths()">Select Similar</button>
                     </div>
                     
                     <!-- Name Field -->
@@ -1922,6 +2147,66 @@ class SVGLayerToolkit {
         this.renderSVG();
         this.updateSelectionVisual();
         this.loadTool('workflow');
+    }
+
+    nudgeSelectedPaths(deltaX, deltaY) {
+        if (this.selectedPaths.size === 0) return;
+        
+        this.saveState();
+        this.isNudging = true;
+        
+        this.selectedPaths.forEach(pathId => {
+            const path = this.paths.find(p => p.id === pathId);
+            if (!path || !path.element) return;
+            
+            try {
+                const bbox = path.element.getBBox();
+                const currentTransform = path.transform || '';
+                
+                // Calculate new transform
+                let tx = deltaX, ty = deltaY;
+                
+                if (currentTransform) {
+                    const matches = currentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                    if (matches) {
+                        tx = parseFloat(matches[1]) + deltaX;
+                        ty = parseFloat(matches[2]) + deltaY;
+                    } else {
+                        tx = deltaX;
+                        ty = deltaY;
+                    }
+                }
+                
+                // Apply grid snapping to final position
+                if (this.snapToGrid) {
+                    const newX = Math.round((bbox.x + tx) / this.gridSize) * this.gridSize;
+                    const newY = Math.round((bbox.y + ty) / this.gridSize) * this.gridSize;
+                    tx = newX - bbox.x;
+                    ty = newY - bbox.y;
+                }
+                
+                const newTransform = currentTransform && !currentTransform.match(/translate/) 
+                    ? `translate(${tx},${ty}) ${currentTransform}`
+                    : `translate(${tx},${ty})`;
+                
+                path.element.setAttribute('transform', newTransform);
+                path.transform = newTransform;
+                
+                // Update position indicator
+                this.updatePositionIndicator(bbox.x + tx, bbox.y + ty);
+            } catch (e) {
+                // Skip paths that can't be nudged
+            }
+        });
+        
+        this.extractPaths();
+        this.renderSVG();
+        
+        // Hide position indicator after a short delay
+        setTimeout(() => {
+            this.isNudging = false;
+            this.hidePositionIndicator();
+        }, 500);
     }
 
     // ==================== TOOL 2: GROUPS & REGIONS ====================
@@ -3214,6 +3499,8 @@ class SVGLayerToolkit {
         const file = event.target.files[0];
         if (!file) return;
         
+        this.showLoading('Tracing image...');
+        
         const threshold = parseInt(document.getElementById('traceThreshold').value) || 128;
         const simplify = parseFloat(document.getElementById('traceSimplify').value) || 2;
         const preserveColor = document.getElementById('traceColor').checked;
@@ -3231,10 +3518,14 @@ class SVGLayerToolkit {
                     // Replace current SVG with traced version
                     if (confirm('Replace current SVG with traced image? This will clear your current work.')) {
                         this.parseSVG(svg);
+                        this.hideLoading();
                         alert('Image traced! Your SVG has been replaced with the traced version.');
+                    } else {
+                        this.hideLoading();
                     }
                 } catch (error) {
-                    alert('Error tracing image: ' + error.message);
+                    this.hideLoading();
+                    this.showError(`Error tracing image: ${error.message}`);
                     console.error(error);
                 }
             };
@@ -5807,6 +6098,7 @@ class SVGLayerToolkit {
             return;
         }
         
+        this.showLoading('Performing union operation...');
         this.saveState();
         const selectedPathElements = Array.from(this.selectedPaths)
             .map(id => this.paths.find(p => p.id === id))
@@ -5901,6 +6193,7 @@ class SVGLayerToolkit {
             this.selectedPaths.add(basePath.id);
             this.renderSVG();
             this.loadTool('boolean-ops');
+            this.hideLoading();
             alert('Union operation completed using Paper.js!');
             
         } catch (e) {
@@ -5910,6 +6203,7 @@ class SVGLayerToolkit {
                     paper.project.clear();
                 } catch (clearErr) {}
             }
+            this.hideLoading();
             alert('Error with Paper.js union. Falling back to basic implementation.');
             this.booleanUnionBasic();
         }
@@ -5937,6 +6231,7 @@ class SVGLayerToolkit {
             return;
         }
         
+        this.showLoading('Performing subtract operation...');
         this.saveState();
         const selectedPathElements = Array.from(this.selectedPaths)
             .map(id => this.paths.find(p => p.id === id))
@@ -6040,9 +6335,11 @@ class SVGLayerToolkit {
                 this.selectedPaths.add(basePath.id);
                 this.renderSVG();
                 this.loadTool('boolean-ops');
+                this.hideLoading();
                 alert('Subtract operation completed successfully!');
             } else {
                 paper.project.clear();
+                this.hideLoading();
                 alert('Subtract operation had issues. Falling back to basic implementation.');
                 this.booleanSubtractBasic();
             }
@@ -6054,6 +6351,7 @@ class SVGLayerToolkit {
                     paper.project.clear();
                 } catch (clearErr) {}
             }
+            this.hideLoading();
             alert('Error with Paper.js subtract. Falling back to basic implementation.');
             this.booleanSubtractBasic();
         }
@@ -6112,6 +6410,7 @@ class SVGLayerToolkit {
             return;
         }
         
+        this.showLoading('Performing intersect operation...');
         this.saveState();
         const selectedPathElements = Array.from(this.selectedPaths)
             .map(id => this.paths.find(p => p.id === id))
@@ -6162,10 +6461,12 @@ class SVGLayerToolkit {
             this.selectedPaths.add(basePath.id);
             this.renderSVG();
             this.loadTool('boolean-ops');
+            this.hideLoading();
             alert('Intersect operation applied using Paper.js!');
             
         } catch (e) {
             console.error('Paper.js intersect error:', e);
+            this.hideLoading();
             alert('Error with Paper.js intersect. Falling back to basic implementation.');
             this.booleanIntersectBasic();
         }
@@ -7845,7 +8146,43 @@ export default ${componentName};`;
         this.selectedPaths.forEach(id => allIds.delete(id));
         this.selectedPaths = allIds;
         this.updateSelectionVisual();
-        this.loadTool('selection');
+        if (this.currentTool === 'workflow' || this.currentTool === 'selection') {
+            this.loadTool(this.currentTool);
+        }
+    }
+
+    selectSimilarPaths() {
+        if (this.selectedPaths.size === 0) {
+            alert('Select a path first to find similar paths');
+            return;
+        }
+        
+        // Get attributes from first selected path
+        const firstPathId = Array.from(this.selectedPaths)[0];
+        const firstPath = this.paths.find(p => p.id === firstPathId);
+        if (!firstPath) return;
+        
+        const matchFill = firstPath.fill || 'none';
+        const matchStroke = firstPath.stroke || 'none';
+        
+        // Find all paths with matching attributes
+        const similarPaths = new Set();
+        this.paths.forEach(path => {
+            const fillMatch = (path.fill || 'none') === matchFill;
+            const strokeMatch = (path.stroke || 'none') === matchStroke;
+            
+            // Match if either fill or stroke matches (or both)
+            if (fillMatch || strokeMatch) {
+                similarPaths.add(path.id);
+            }
+        });
+        
+        // Update selection
+        this.selectedPaths = similarPaths;
+        this.updateSelectionVisual();
+        if (this.currentTool === 'workflow' || this.currentTool === 'selection') {
+            this.loadTool(this.currentTool);
+        }
     }
 
     togglePathSelection(pathId) {
@@ -7888,6 +8225,8 @@ export default ${componentName};`;
         const paths = svgClone.querySelectorAll('path');
         paths.forEach(path => {
             if (this.selectedPaths.has(path.id)) {
+                // Add fade-in animation class
+                path.style.transition = 'opacity 0.2s ease-in, filter 0.2s ease-in';
                 path.style.opacity = '0.85';
                 path.style.filter = 'drop-shadow(0 0 2px #4a90e2) drop-shadow(0 0 6px rgba(74,144,226,0.5))';
                 
@@ -7896,6 +8235,7 @@ export default ${componentName};`;
                     this.addStartEndIndicators(path, svgClone);
                 }
             } else {
+                path.style.transition = 'opacity 0.2s ease-out, filter 0.2s ease-out';
                 path.style.opacity = '';
                 path.style.filter = '';
             }
@@ -7904,9 +8244,279 @@ export default ${componentName};`;
         // Add resize handles for selected paths
         if (this.selectedPaths.size > 0) {
             this.addResizeHandles(svgClone);
+            // Delay toolbar rendering slightly to ensure SVG is fully rendered
+            // Also update toolbar position if it already exists
+            setTimeout(() => {
+                if (this.selectedPaths.size > 0) {
+                    const existingToolbar = document.getElementById('quickActionsToolbar');
+                    if (existingToolbar) {
+                        // Update existing toolbar position
+                        if (this.toolbarPositionUpdater) {
+                            this.toolbarPositionUpdater();
+                        }
+                    } else {
+                        // Create new toolbar
+                        this.renderQuickActionsToolbar(svgClone);
+                    }
+                }
+            }, 10);
+        } else {
+            this.hideQuickActionsToolbar();
         }
         
         this.scheduleMiniMap();
+    }
+
+    renderQuickActionsToolbar(svg) {
+        if (this.selectedPaths.size === 0) {
+            this.hideQuickActionsToolbar();
+            return;
+        }
+        
+        // Remove existing toolbar
+        this.hideQuickActionsToolbar();
+        
+        // Calculate bounding box center for positioning
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        let hasValidBounds = false;
+        
+        this.selectedPaths.forEach(pathId => {
+            const path = this.paths.find(p => p.id === pathId);
+            if (!path) return;
+            
+            try {
+                const bbox = path.element.getBBox();
+                minX = Math.min(minX, bbox.x);
+                minY = Math.min(minY, bbox.y);
+                maxX = Math.max(maxX, bbox.x + bbox.width);
+                maxY = Math.max(maxY, bbox.y + bbox.height);
+                hasValidBounds = true;
+            } catch (e) {
+                // Skip paths without valid bounds
+            }
+        });
+        
+        if (!hasValidBounds) return;
+        
+        const centerX = (minX + maxX) / 2;
+        const centerY = minY - 40; // Position above selection
+        
+        // Create toolbar container
+        const toolbar = document.createElement('div');
+        toolbar.id = 'quickActionsToolbar';
+        toolbar.style.cssText = `
+            position: absolute;
+            left: ${centerX}px;
+            top: ${centerY}px;
+            transform: translateX(-50%);
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            padding: 0.5rem;
+            display: flex;
+            gap: 0.25rem;
+            z-index: 300;
+            pointer-events: all;
+        `;
+        
+        // Create buttons
+        const buttons = [
+            { label: '📋', title: 'Copy (Ctrl+C)', action: () => this.copySelectedPaths() },
+            { label: '📄', title: 'Duplicate (Ctrl+D)', action: () => this.duplicateSelectedPaths() },
+            { label: '🗑️', title: 'Delete (Del)', action: () => { if (confirm(`Delete ${this.selectedPaths.size} path(s)?`)) this.deleteSelectedPaths(); } },
+            { label: '⬅️', title: 'Align Left', action: () => this.alignSelected('left') },
+            { label: '↔️', title: 'Align Center', action: () => this.alignSelected('center') },
+            { label: '➡️', title: 'Align Right', action: () => this.alignSelected('right') },
+            { label: '⬆️', title: 'Align Top', action: () => this.alignSelected('top') },
+            { label: '↕️', title: 'Align Middle', action: () => this.alignSelected('middle') },
+            { label: '⬇️', title: 'Align Bottom', action: () => this.alignSelected('bottom') }
+        ];
+        
+        buttons.forEach(btn => {
+            const button = document.createElement('button');
+            button.textContent = btn.label;
+            button.title = btn.title;
+            button.style.cssText = `
+                background: var(--bg-secondary);
+                border: 1px solid var(--border-color);
+                border-radius: 4px;
+                padding: 0.375rem 0.5rem;
+                cursor: pointer;
+                font-size: 0.875rem;
+                transition: all 0.2s;
+            `;
+            button.onmouseover = () => {
+                button.style.background = 'var(--bg-tertiary)';
+                button.style.borderColor = 'var(--primary-color)';
+            };
+            button.onmouseout = () => {
+                button.style.background = 'var(--bg-secondary)';
+                button.style.borderColor = 'var(--border-color)';
+            };
+            button.onclick = (e) => {
+                e.stopPropagation();
+                btn.action();
+            };
+            toolbar.appendChild(button);
+        });
+        
+        // Position toolbar relative to wrapper using SVG coordinate system
+        const wrapper = document.getElementById('svgWrapper');
+        if (wrapper && svg) {
+            // Helper function to update toolbar position
+            const updateToolbarPosition = () => {
+                if (!toolbar.parentNode) return;
+                
+                try {
+                    const svgRect = svg.getBoundingClientRect();
+                    const wrapperRect = wrapper.getBoundingClientRect();
+                    const ctm = svg.getScreenCTM();
+                    
+                    if (!ctm) {
+                        // Fallback: use simple positioning if CTM not available
+                        const scale = this.currentZoom || 1;
+                        toolbar.style.left = `${(centerX * scale) + wrapper.scrollLeft}px`;
+                        toolbar.style.top = `${(centerY * scale) + wrapper.scrollTop - 50}px`;
+                        return;
+                    }
+                    
+                    // Get the transform matrix from SVG to screen
+                    const point = svg.createSVGPoint();
+                    point.x = centerX;
+                    point.y = centerY;
+                    const screenPoint = point.matrixTransform(ctm);
+                    
+                    // Position relative to wrapper
+                    toolbar.style.left = `${screenPoint.x - wrapperRect.left}px`;
+                    toolbar.style.top = `${screenPoint.y - wrapperRect.top - 50}px`; // Offset above
+                } catch (e) {
+                    // Fallback positioning if transform fails
+                    const scale = this.currentZoom || 1;
+                    toolbar.style.left = `${(centerX * scale) + wrapper.scrollLeft}px`;
+                    toolbar.style.top = `${(centerY * scale) + wrapper.scrollTop - 50}px`;
+                }
+            };
+            
+            // Initial positioning
+            updateToolbarPosition();
+            wrapper.appendChild(toolbar);
+            
+            // Store update function for later cleanup
+            this.toolbarPositionUpdater = updateToolbarPosition;
+            
+            // Update on scroll/zoom
+            wrapper.addEventListener('scroll', updateToolbarPosition);
+            
+            // Also update when zoom changes (if zoom buttons are used)
+            const zoomButtons = document.querySelectorAll('#zoomInBtn, #zoomOutBtn');
+            zoomButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    setTimeout(updateToolbarPosition, 100);
+                });
+            });
+        }
+    }
+
+    hideQuickActionsToolbar() {
+        const toolbar = document.getElementById('quickActionsToolbar');
+        if (toolbar && toolbar.parentNode) {
+            toolbar.parentNode.removeChild(toolbar);
+        }
+        
+        // Clean up position updater
+        if (this.toolbarPositionUpdater) {
+            const wrapper = document.getElementById('svgWrapper');
+            if (wrapper) {
+                wrapper.removeEventListener('scroll', this.toolbarPositionUpdater);
+            }
+            this.toolbarPositionUpdater = null;
+        }
+    }
+
+    alignSelected(alignment) {
+        if (this.selectedPaths.size === 0) return;
+        
+        this.saveState();
+        
+        // Get bounding boxes of all selected paths
+        const bounds = [];
+        this.selectedPaths.forEach(pathId => {
+            const path = this.paths.find(p => p.id === pathId);
+            if (!path) return;
+            
+            try {
+                const bbox = path.element.getBBox();
+                bounds.push({ id: pathId, bbox, path });
+            } catch (e) {
+                // Skip paths without valid bounds
+            }
+        });
+        
+        if (bounds.length === 0) return;
+        
+        // Calculate reference bounds
+        let refLeft = Math.min(...bounds.map(b => b.bbox.x));
+        let refRight = Math.max(...bounds.map(b => b.bbox.x + b.bbox.width));
+        let refTop = Math.min(...bounds.map(b => b.bbox.y));
+        let refBottom = Math.max(...bounds.map(b => b.bbox.y + b.bbox.height));
+        const refCenterX = (refLeft + refRight) / 2;
+        const refCenterY = (refTop + refBottom) / 2;
+        
+        // Apply alignment
+        bounds.forEach(({ id, bbox, path }) => {
+            const currentTransform = path.transform || '';
+            let tx = 0, ty = 0;
+            
+            switch (alignment) {
+                case 'left':
+                    tx = refLeft - bbox.x;
+                    break;
+                case 'center':
+                    tx = refCenterX - (bbox.x + bbox.width / 2);
+                    break;
+                case 'right':
+                    tx = refRight - (bbox.x + bbox.width);
+                    break;
+                case 'top':
+                    ty = refTop - bbox.y;
+                    break;
+                case 'middle':
+                    ty = refCenterY - (bbox.y + bbox.height / 2);
+                    break;
+                case 'bottom':
+                    ty = refBottom - (bbox.y + bbox.height);
+                    break;
+            }
+            
+            // Apply grid snapping
+            if (this.snapToGrid) {
+                tx = Math.round(tx / this.gridSize) * this.gridSize;
+                ty = Math.round(ty / this.gridSize) * this.gridSize;
+            }
+            
+            if (tx !== 0 || ty !== 0) {
+                let newTransform = '';
+                if (currentTransform) {
+                    const matches = currentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                    if (matches) {
+                        const origTx = parseFloat(matches[1]) + tx;
+                        const origTy = parseFloat(matches[2]) + ty;
+                        newTransform = `translate(${origTx},${origTy})`;
+                    } else {
+                        newTransform = `translate(${tx},${ty}) ${currentTransform}`;
+                    }
+                } else {
+                    newTransform = `translate(${tx},${ty})`;
+                }
+                
+                path.element.setAttribute('transform', newTransform);
+                path.transform = newTransform;
+            }
+        });
+        
+        this.extractPaths();
+        this.renderSVG();
     }
 
     removeResizeHandles() {
@@ -8035,6 +8645,7 @@ export default ${componentName};`;
             this.resizeHandleType = handle.dataset.handleType;
             this.resizeStartPoint = this.screenToSVG(svg, e.clientX, e.clientY);
             this.resizeStartBounds = { x: startX, y: startY, width: startWidth, height: startHeight };
+            this.maintainAspectRatio = e.shiftKey; // Track Shift key for aspect ratio
             
             document.body.style.userSelect = 'none';
             
@@ -8042,8 +8653,8 @@ export default ${componentName};`;
                 if (!isDragging) return;
                 
                 const currentPoint = this.screenToSVG(svg, moveE.clientX, moveE.clientY);
-                const deltaX = currentPoint.x - this.resizeStartPoint.x;
-                const deltaY = currentPoint.y - this.resizeStartPoint.y;
+                let deltaX = currentPoint.x - this.resizeStartPoint.x;
+                let deltaY = currentPoint.y - this.resizeStartPoint.y;
                 
                 // Apply grid snapping if enabled
                 if (this.snapToGrid) {
@@ -8072,8 +8683,53 @@ export default ${componentName};`;
                         newHeight = startHeight + deltaY;
                         break;
                     case 'se':
-                        newWidth = startWidth + deltaX;
-                        newHeight = startHeight + deltaY;
+                        if (this.maintainAspectRatio) {
+                            // Maintain aspect ratio - use the larger delta
+                            const scale = Math.max(Math.abs(deltaX) / startWidth, Math.abs(deltaY) / startHeight);
+                            newWidth = startWidth + (deltaX >= 0 ? 1 : -1) * startWidth * scale;
+                            newHeight = startHeight + (deltaY >= 0 ? 1 : -1) * startHeight * scale;
+                        } else {
+                            newWidth = startWidth + deltaX;
+                            newHeight = startHeight + deltaY;
+                        }
+                        break;
+                    case 'nw':
+                        if (this.maintainAspectRatio) {
+                            const scale = Math.max(Math.abs(deltaX) / startWidth, Math.abs(deltaY) / startHeight);
+                            newX = startX + (deltaX <= 0 ? -1 : 1) * startWidth * scale;
+                            newY = startY + (deltaY <= 0 ? -1 : 1) * startHeight * scale;
+                            newWidth = startWidth - (deltaX <= 0 ? -1 : 1) * startWidth * scale;
+                            newHeight = startHeight - (deltaY <= 0 ? -1 : 1) * startHeight * scale;
+                        } else {
+                            newX = startX + deltaX;
+                            newY = startY + deltaY;
+                            newWidth = startWidth - deltaX;
+                            newHeight = startHeight - deltaY;
+                        }
+                        break;
+                    case 'ne':
+                        if (this.maintainAspectRatio) {
+                            const scale = Math.max(Math.abs(deltaX) / startWidth, Math.abs(deltaY) / startHeight);
+                            newY = startY + (deltaY <= 0 ? -1 : 1) * startHeight * scale;
+                            newWidth = startWidth + (deltaX >= 0 ? 1 : -1) * startWidth * scale;
+                            newHeight = startHeight - (deltaY <= 0 ? -1 : 1) * startHeight * scale;
+                        } else {
+                            newY = startY + deltaY;
+                            newWidth = startWidth + deltaX;
+                            newHeight = startHeight - deltaY;
+                        }
+                        break;
+                    case 'sw':
+                        if (this.maintainAspectRatio) {
+                            const scale = Math.max(Math.abs(deltaX) / startWidth, Math.abs(deltaY) / startHeight);
+                            newX = startX + (deltaX <= 0 ? -1 : 1) * startWidth * scale;
+                            newWidth = startWidth - (deltaX <= 0 ? -1 : 1) * startWidth * scale;
+                            newHeight = startHeight + (deltaY >= 0 ? 1 : -1) * startHeight * scale;
+                        } else {
+                            newX = startX + deltaX;
+                            newWidth = startWidth - deltaX;
+                            newHeight = startHeight + deltaY;
+                        }
                         break;
                     case 'n':
                         newY = startY + deltaY;
@@ -8102,6 +8758,11 @@ export default ${componentName};`;
                 
                 // Update handle positions
                 this.updateResizeHandlePositions(newX, newY, newWidth, newHeight);
+                
+                // Update position indicator (show center of bounding box)
+                const centerX = newX + newWidth / 2;
+                const centerY = newY + newHeight / 2;
+                this.updatePositionIndicator(centerX, centerY);
             };
             
             const mouseUpHandler = (upE) => {
@@ -8123,6 +8784,9 @@ export default ${componentName};`;
                 
                 // Apply resize to actual paths
                 this.applyResizeToPaths(deltaX, deltaY);
+                
+                // Hide position indicator
+                this.hidePositionIndicator();
                 
                 document.removeEventListener('mousemove', mouseMoveHandler);
                 document.removeEventListener('mouseup', mouseUpHandler);
