@@ -1,6 +1,6 @@
 # SVG Layer Toolkit - Feature Status (Truthful Implementation Status)
 
-**Last Updated:** November 2024  
+**Last Updated:** November 2025  
 **Version:** 2.1  
 **Related Docs:** See `FEATURE_NOTES.md` for feature reference, `FEATURE_EXPLANATIONS.md` for detailed explanations
 
@@ -12,7 +12,7 @@
 - Workflow panel: selection/group info, region select, template loader (sample file), file patcher (update external SVG paths by ID), simple comparator (path count).
 - Animator: CSS animations with optional GSAP if loaded.
 
-### UX Enhancements (November 2024)
+### UX Enhancements (November 2025)
 - **Position Indicator**: Status bar showing X/Y coordinates during drag operations with grid snapping indicator
 - **Keyboard Shortcuts**: Ctrl/Cmd+D (duplicate), Ctrl/Cmd+A (select all), Escape (deselect), Arrow keys (nudge with grid snapping)
 - **Selection Tools**: Invert Selection, Select Similar buttons in Workflow Manager

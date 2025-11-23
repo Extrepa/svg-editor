@@ -1,6 +1,6 @@
 # SVG Layer Toolkit - Update Log (Truthful Implementation History)
 
-**Last Updated:** November 2024  
+**Last Updated:** November 2025  
 **Version:** 2.1 (GSAP Integration)  
 **Related Docs:** See `UPDATE_NOTES.md` for latest highlights, `FEATURE_STATUS.md` for implementation status
 
@@ -8,7 +8,7 @@
 
 ## 📅 Recent Changes
 
-### GSAP Animation Integration (November 2024)
+### GSAP Animation Integration (November 2025)
 - **Library Added:** GSAP 3.12.5 via CDN
 - **Location:** Animator Tool → Enhanced with GSAP support
 - **Features:**
@@ -20,7 +20,7 @@
   - Proper animation cleanup and management
 - **Documentation:** Created `GSAP_INTEGRATION.md` with complete usage guide
 
-### Major UX Improvements (November 2024)
+### Major UX Improvements (November 2025)
 
 **Phase 1: Keyboard Shortcuts & Position Indicator**
 - Added position indicator status bar showing X/Y coordinates during drag operations with grid snapping indicator
@@ -50,7 +50,7 @@
 - Background modes unified (color/grid/checkerboard), zoom controls refined, saved preferences respected.
 - History chips show "Import" for the initial state; timestamps on hover.
 
-### Boolean Operations Enhancement (November 2024)
+### Boolean Operations Enhancement (November 2025)
 - **Enhanced Paper.js Integration:**
   - Proper error handling with fallbacks
   - Dynamic canvas sizing based on bounding boxes
@@ -59,7 +59,7 @@
   - Multiple result extraction methods
 - **Status:** Fully production-ready for complex paths
 
-### Image Tracer/Text-to-Path Quality Improvements (November 2024)
+### Image Tracer/Text-to-Path Quality Improvements (November 2025)
 - **Better Grayscale Conversion:**
   - Weighted grayscale (0.299R + 0.587G + 0.114B)
   - Alpha channel consideration
@@ -72,7 +72,7 @@
   - Better bezier curve generation
   - Smoother path output
 
-### Path Offset Enhancement (November 2024)
+### Path Offset Enhancement (November 2025)
 - **Accurate Offset Calculations:**
   - Uses Paper.js `expandStroke()` method
   - Proper path flattening and closure
@@ -115,7 +115,7 @@
 
 ## 🔗 Related Documentation
 
-- **UPDATE_NOTES.md** - Latest update highlights (November 2024)
+- **UPDATE_NOTES.md** - Latest update highlights (November 2025)
 - **FEATURE_NOTES.md** - Complete feature reference guide
 - **FEATURE_STATUS.md** - Truthful implementation status
 - **FEATURE_EXPLANATIONS.md** - Detailed feature explanations

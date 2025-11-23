@@ -12,7 +12,8 @@ class SVGLayerToolkit {
         this.history = [];
         this.historyIndex = -1;
         this.maxHistory = 100;
-        this.currentTool = 'preview';
+        this.currentTool = 'select'; // Default tool: select
+        this.contextMenu = null; // Context menu element
         this.hoveredPathId = null;
         this.backgroundMode = 'color'; // 'none', 'color', 'grid', 'checkerboard'
         this.previewBgColor = '#ffffff';
@@ -67,6 +68,8 @@ class SVGLayerToolkit {
         this.initDarkMode();
         this.applyBackgroundMods(); // Initialize background
         this.loadTool('preview');
+        // Initialize tool system - set default tool
+        this.setActiveTool('select');
     }
 
     initDarkMode() {
@@ -96,11 +99,73 @@ class SVGLayerToolkit {
         }
     }
 
+    setActiveTool(toolName) {
+        this.currentTool = toolName;
+        
+        // Update toolbar button states
+        document.querySelectorAll('.tool-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        const activeBtn = document.querySelector(`[data-tool="${toolName}"]`);
+        if (activeBtn) {
+            activeBtn.classList.add('active');
+        }
+        
+        // Update UI based on tool
+        const wrapper = document.getElementById('svgWrapper');
+        if (wrapper) {
+            // Update cursor based on tool
+            switch(toolName) {
+                case 'move':
+                    wrapper.style.cursor = 'move';
+                    break;
+                case 'resize':
+                    wrapper.style.cursor = 'default';
+                    break;
+                case 'select':
+                    wrapper.style.cursor = 'default';
+                    break;
+                default:
+                    wrapper.style.cursor = 'default';
+            }
+        }
+        
+        if (toolName === 'resize') {
+            // Resize handles will be shown on next render
+            this.renderSVG();
+        } else {
+            // Remove resize handles if switching away from resize tool
+            this.removeResizeHandles();
+        }
+    }
+
     setupEventListeners() {
         // File operations
         document.getElementById('fileInput').addEventListener('change', (e) => this.loadSVGFile(e));
         document.getElementById('loadFileBtn').addEventListener('click', () => document.getElementById('fileInput').click());
         document.getElementById('saveFileBtn').addEventListener('click', () => this.saveSVG());
+        
+        // Canvas toolbar buttons
+        document.querySelectorAll('.tool-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const tool = e.currentTarget.dataset.tool;
+                if (tool) {
+                    this.setActiveTool(tool);
+                    
+                    // Handle tool-specific actions
+                    if (tool === 'copy' && this.selectedPaths.size > 0) {
+                        this.copySelectedPaths();
+                    } else if (tool === 'duplicate' && this.selectedPaths.size > 0) {
+                        this.duplicateSelectedPaths();
+                    } else if (tool === 'delete' && this.selectedPaths.size > 0) {
+                        if (confirm(`Delete ${this.selectedPaths.size} path(s)?`)) {
+                            this.deleteSelectedPaths();
+                        }
+                    }
+                }
+            });
+        });
         
         // Navigation
         document.querySelectorAll('.nav-item').forEach(item => {
@@ -123,6 +188,35 @@ class SVGLayerToolkit {
                     return;
                 }
                 return;
+            }
+            
+            // Tool selection shortcuts (only when not using modifier keys)
+            if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                if (e.key === 'v' || e.key === 'V') {
+                    e.preventDefault();
+                    this.setActiveTool('select');
+                    return;
+                }
+                if (e.key === 'm' || e.key === 'M') {
+                    e.preventDefault();
+                    this.setActiveTool('move');
+                    return;
+                }
+                if (e.key === 'r' || e.key === 'R') {
+                    e.preventDefault();
+                    this.setActiveTool('resize');
+                    return;
+                }
+                if (e.key === 'c' || e.key === 'C') {
+                    e.preventDefault();
+                    if (this.selectedPaths.size > 0) {
+                        this.setActiveTool('copy');
+                        this.copySelectedPaths();
+                    } else {
+                        this.setActiveTool('copy');
+                    }
+                    return;
+                }
             }
             
             // Delete/Backspace: Delete selected paths
@@ -361,6 +455,12 @@ class SVGLayerToolkit {
                 e.preventDefault();
             }
             if (this.spacePanning) return;
+            
+            // If right-clicking on empty space (not a path), show context menu for selected paths
+            if (e.target.tagName !== 'path' && this.selectedPaths.size > 0) {
+                e.preventDefault();
+                this.showContextMenu(e.clientX, e.clientY, Array.from(this.selectedPaths)[0]);
+            }
             // Don't otherwise prevent default on wrapper - let path handlers work
         });
     }
@@ -600,13 +700,22 @@ class SVGLayerToolkit {
         const paths = svgClone.querySelectorAll('path');
         paths.forEach(path => {
             path.addEventListener('mouseenter', (e) => {
+                // Update cursor based on active tool
+                if (this.currentTool === 'move') {
+                    e.target.style.cursor = 'move';
+                } else if (this.currentTool === 'resize') {
+                    e.target.style.cursor = 'default';
+                } else if (this.currentTool === 'select') {
+                    e.target.style.cursor = 'pointer';
+                } else {
+                    e.target.style.cursor = 'default';
+                }
                 const pathId = e.target.id;
                 this.hoveredPathId = pathId;
                 if (!this.selectedPaths.has(pathId)) {
                     e.target.dataset._prevFilter = e.target.style.filter || '';
                     e.target.style.filter = 'drop-shadow(0 0 2px rgba(0,0,0,0.25)) drop-shadow(0 0 6px rgba(0,0,0,0.15))';
                 }
-                e.target.style.cursor = 'pointer';
             });
             
             path.addEventListener('mouseleave', (e) => {
@@ -621,7 +730,8 @@ class SVGLayerToolkit {
                 if (this.shapeCreationMode) return;
                 
                 // If dragging is disabled, just do selection
-                if (!this.pathDragEnabled) {
+                // Only allow drag when Move tool is active
+                if (this.currentTool !== 'move' || !this.pathDragEnabled) {
                     if (e.shiftKey || e.ctrlKey || e.metaKey) {
                         this.togglePathSelection(e.target.id);
                     } else {
@@ -914,7 +1024,7 @@ class SVGLayerToolkit {
                 this.switchTool('workflow');
             });
             
-            // Right-click to pick color (paint bucket style)
+            // Right-click to show context menu
             path.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -929,7 +1039,10 @@ class SVGLayerToolkit {
                     this.updateSelectionVisual();
                 }
                 
-                // Pick fill color first, then stroke
+                // Show context menu at cursor position
+                this.showContextMenu(e.clientX, e.clientY, pathId);
+                
+                // Pick fill color first, then stroke (for color picker tool if needed)
                 const colorToPick = pathElement.fill && pathElement.fill !== 'none' 
                     ? pathElement.fill 
                     : (pathElement.stroke && pathElement.stroke !== 'none' ? pathElement.stroke : null);
@@ -1107,9 +1220,10 @@ class SVGLayerToolkit {
                                 path.style.filter = '';
                             }
                         });
-                        
-                        marqueeBox = null;
-                        marqueeStart = null;
+                    }
+                    
+                    marqueeBox = null;
+                    marqueeStart = null;
                     
                     document.removeEventListener('mousemove', mouseMoveHandler);
                     document.removeEventListener('mouseup', mouseUpHandler);
@@ -8256,7 +8370,8 @@ export default ${componentName};`;
                         }
                     } else {
                         // Create new toolbar
-                        this.renderQuickActionsToolbar(svgClone);
+                        // Quick actions toolbar disabled - using context menu instead
+                        // this.renderQuickActionsToolbar(svgClone);
                     }
                 }
             }, 10);
@@ -8376,8 +8491,25 @@ export default ${componentName};`;
                     if (!ctm) {
                         // Fallback: use simple positioning if CTM not available
                         const scale = this.currentZoom || 1;
-                        toolbar.style.left = `${(centerX * scale) + wrapper.scrollLeft}px`;
-                        toolbar.style.top = `${(centerY * scale) + wrapper.scrollTop - 50}px`;
+                        let toolbarLeft = (centerX * scale) + wrapper.scrollLeft;
+                        let toolbarTop = (centerY * scale) + wrapper.scrollTop - 50;
+                        
+                        // Get toolbar dimensions for viewport constraint
+                        const toolbarRect = toolbar.getBoundingClientRect();
+                        const toolbarWidth = toolbarRect.width || 200;
+                        const toolbarHeight = toolbarRect.height || 40;
+                        
+                        // Constrain to viewport
+                        const padding = 10;
+                        const maxLeft = wrapperRect.width - toolbarWidth - padding;
+                        const maxTop = wrapperRect.height - toolbarHeight - padding;
+                        
+                        toolbarLeft = Math.max(padding, Math.min(toolbarLeft, maxLeft));
+                        toolbarTop = Math.max(padding, Math.min(toolbarTop, maxTop));
+                        
+                        toolbar.style.left = `${toolbarLeft}px`;
+                        toolbar.style.top = `${toolbarTop}px`;
+                        toolbar.style.transform = 'translateX(-50%)';
                         return;
                     }
                     
@@ -8387,14 +8519,50 @@ export default ${componentName};`;
                     point.y = centerY;
                     const screenPoint = point.matrixTransform(ctm);
                     
+                    // Calculate toolbar position relative to wrapper
+                    let toolbarLeft = screenPoint.x - wrapperRect.left;
+                    let toolbarTop = screenPoint.y - wrapperRect.top - 50; // Offset above
+                    
+                    // Get toolbar dimensions
+                    const toolbarRect = toolbar.getBoundingClientRect();
+                    const toolbarWidth = toolbarRect.width || 200; // Fallback width
+                    const toolbarHeight = toolbarRect.height || 40; // Fallback height
+                    
+                    // Constrain to viewport - prevent toolbar from going outside wrapper bounds
+                    const padding = 10; // Padding from edges
+                    const maxLeft = wrapperRect.width - toolbarWidth - padding;
+                    const maxTop = wrapperRect.height - toolbarHeight - padding;
+                    
+                    // Clamp position to viewport bounds
+                    toolbarLeft = Math.max(padding, Math.min(toolbarLeft, maxLeft));
+                    toolbarTop = Math.max(padding, Math.min(toolbarTop, maxTop));
+                    
                     // Position relative to wrapper
-                    toolbar.style.left = `${screenPoint.x - wrapperRect.left}px`;
-                    toolbar.style.top = `${screenPoint.y - wrapperRect.top - 50}px`; // Offset above
+                    toolbar.style.left = `${toolbarLeft}px`;
+                    toolbar.style.top = `${toolbarTop}px`;
+                    toolbar.style.transform = 'translateX(-50%)'; // Center horizontally
                 } catch (e) {
                     // Fallback positioning if transform fails
                     const scale = this.currentZoom || 1;
-                    toolbar.style.left = `${(centerX * scale) + wrapper.scrollLeft}px`;
-                    toolbar.style.top = `${(centerY * scale) + wrapper.scrollTop - 50}px`;
+                    let toolbarLeft = (centerX * scale) + wrapper.scrollLeft;
+                    let toolbarTop = (centerY * scale) + wrapper.scrollTop - 50;
+                    
+                    // Get toolbar dimensions for viewport constraint
+                    const toolbarRect = toolbar.getBoundingClientRect();
+                    const toolbarWidth = toolbarRect.width || 200;
+                    const toolbarHeight = toolbarRect.height || 40;
+                    
+                    // Constrain to viewport
+                    const padding = 10;
+                    const maxLeft = wrapperRect.width - toolbarWidth - padding;
+                    const maxTop = wrapperRect.height - toolbarHeight - padding;
+                    
+                    toolbarLeft = Math.max(padding, Math.min(toolbarLeft, maxLeft));
+                    toolbarTop = Math.max(padding, Math.min(toolbarTop, maxTop));
+                    
+                    toolbar.style.left = `${toolbarLeft}px`;
+                    toolbar.style.top = `${toolbarTop}px`;
+                    toolbar.style.transform = 'translateX(-50%)';
                 }
             };
             
@@ -8535,6 +8703,8 @@ export default ${componentName};`;
     }
 
     addResizeHandles(svg) {
+        // Only show resize handles when Resize tool is active
+        if (this.currentTool !== 'resize') return;
         if (this.selectedPaths.size === 0) return;
         
         // Calculate combined bounding box for all selected paths
@@ -8634,9 +8804,14 @@ export default ${componentName};`;
     }
 
     makeResizeHandleDraggable(handle, svg, startX, startY, startWidth, startHeight) {
+        // Only allow resize when Resize tool is active
+        if (this.currentTool !== 'resize') return;
         let isDragging = false;
         
         handle.addEventListener('mousedown', (e) => {
+            // Only allow resize when Resize tool is active
+            if (this.currentTool !== 'resize') return;
+            
             e.preventDefault();
             e.stopPropagation();
             
@@ -10572,6 +10747,121 @@ export default ${componentName};`;
         this.gridOverlayGroup = gridGroup;
     }
 
+    showContextMenu(x, y, pathId) {
+        const menu = document.getElementById('contextMenu');
+        if (!menu) return;
+        
+        // Handle case where pathId might be null/undefined (empty space click)
+        if (!pathId && this.selectedPaths.size === 0) {
+            // No selection, show basic menu
+            let menuHTML = '<div class="context-menu-item" onclick="app.setActiveTool(\'select\'); app.hideContextMenu();">Select Tool</div>';
+            menuHTML += '<div class="context-menu-item" onclick="app.setActiveTool(\'move\'); app.hideContextMenu();">Move Tool</div>';
+            menuHTML += '<div class="context-menu-item" onclick="app.setActiveTool(\'resize\'); app.hideContextMenu();">Resize Tool</div>';
+            menu.innerHTML = menuHTML;
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+            menu.style.display = 'block';
+            return;
+        }
+        
+        // Get path info
+        const path = pathId ? this.paths.find(p => p.id === pathId) : null;
+        const isSelected = pathId ? this.selectedPaths.has(pathId) : false;
+        const hasMultipleSelected = this.selectedPaths.size > 1;
+        
+        // Build menu items
+        let menuHTML = '<div class="context-menu-item" onclick="app.setActiveTool(\'move\'); app.hideContextMenu();">Move</div>';
+        menuHTML += '<div class="context-menu-item" onclick="app.setActiveTool(\'resize\'); app.hideContextMenu();">Resize</div>';
+        menuHTML += '<div class="context-menu-item" onclick="app.copySelectedPaths(); app.hideContextMenu();">Copy</div>';
+        menuHTML += '<div class="context-menu-item" onclick="app.duplicateSelectedPaths(); app.hideContextMenu();">Duplicate</div>';
+        menuHTML += '<div class="context-menu-separator"></div>';
+        
+        if (!isSelected) {
+            menuHTML += `<div class="context-menu-item" onclick="app.selectedPaths.clear(); app.selectedPaths.add('${pathId}'); app.renderSVG(); app.hideContextMenu();">Select</div>`;
+        }
+        
+        if (hasMultipleSelected) {
+            menuHTML += '<div class="context-menu-item" onclick="app.alignSelected(\'left\'); app.hideContextMenu();">Align Left</div>';
+            menuHTML += '<div class="context-menu-item" onclick="app.alignSelected(\'center\'); app.hideContextMenu();">Align Center</div>';
+            menuHTML += '<div class="context-menu-item" onclick="app.alignSelected(\'right\'); app.hideContextMenu();">Align Right</div>';
+            menuHTML += '<div class="context-menu-item" onclick="app.alignSelected(\'top\'); app.hideContextMenu();">Align Top</div>';
+            menuHTML += '<div class="context-menu-item" onclick="app.alignSelected(\'middle\'); app.hideContextMenu();">Align Middle</div>';
+            menuHTML += '<div class="context-menu-item" onclick="app.alignSelected(\'bottom\'); app.hideContextMenu();">Align Bottom</div>';
+            menuHTML += '<div class="context-menu-separator"></div>';
+        }
+        
+        menuHTML += `<div class="context-menu-item" onclick="if(confirm('Delete ${this.selectedPaths.size || 1} path(s)?')) { app.deleteSelectedPaths(); } app.hideContextMenu();">Delete</div>`;
+        
+        menu.innerHTML = menuHTML;
+        
+        // Position menu, ensuring it stays within viewport
+        const menuWidth = 160; // Approximate menu width
+        const menuHeight = menuHTML.split('</div>').length * 32; // Approximate height per item
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        let menuX = x;
+        let menuY = y;
+        
+        // Adjust if menu would go off right edge
+        if (menuX + menuWidth > viewportWidth) {
+            menuX = viewportWidth - menuWidth - 10;
+        }
+        
+        // Adjust if menu would go off bottom edge
+        if (menuY + menuHeight > viewportHeight) {
+            menuY = viewportHeight - menuHeight - 10;
+        }
+        
+        // Ensure menu doesn't go off left or top edges
+        menuX = Math.max(10, menuX);
+        menuY = Math.max(10, menuY);
+        
+        menu.style.left = `${menuX}px`;
+        menu.style.top = `${menuY}px`;
+        menu.style.display = 'block';
+        
+        // Close menu on outside click
+        setTimeout(() => {
+            const closeHandler = (e) => {
+                if (!menu.contains(e.target)) {
+                    this.hideContextMenu();
+                    document.removeEventListener('click', closeHandler);
+                }
+            };
+            document.addEventListener('click', closeHandler);
+        }, 10);
+    }
+
+    hideContextMenu() {
+        const menu = document.getElementById('contextMenu');
+        if (menu) {
+            menu.style.display = 'none';
+        }
+    }
+
+    updatePositionIndicator(x, y) {
+        const statusBar = document.getElementById('statusBar');
+        const statusBarText = document.getElementById('statusBarText');
+        if (statusBar && statusBarText) {
+            // Format coordinates with 2 decimal places
+            const formattedX = x.toFixed(2);
+            const formattedY = y.toFixed(2);
+            
+            // Check if grid snapping is enabled
+            const snapIndicator = this.snapToGrid ? ' (snapped)' : '';
+            statusBarText.textContent = `X: ${formattedX}  Y: ${formattedY}${snapIndicator}`;
+            statusBar.style.display = 'block';
+        }
+    }
+
+    hidePositionIndicator() {
+        const statusBar = document.getElementById('statusBar');
+        if (statusBar) {
+            statusBar.style.display = 'none';
+        }
+    }
+
     updatePreviewZoom() {
         const zoom = parseFloat(document.getElementById('previewZoom').value) || 1;
         this.currentZoom = zoom;
@@ -10749,6 +11039,7 @@ export default ${componentName};`;
 
     zoomIn() {
         const zoomInput = document.getElementById('previewZoom');
+        if (!zoomInput) return;
         const currentZoom = parseFloat(zoomInput.value) || 1;
         const newZoom = Math.min(5, currentZoom + 0.1);
         zoomInput.value = newZoom.toFixed(2);
@@ -10757,6 +11048,7 @@ export default ${componentName};`;
 
     zoomOut() {
         const zoomInput = document.getElementById('previewZoom');
+        if (!zoomInput) return;
         const currentZoom = parseFloat(zoomInput.value) || 1;
         const newZoom = Math.max(0.1, currentZoom - 0.1);
         zoomInput.value = newZoom.toFixed(2);
@@ -10837,19 +11129,22 @@ export default ${componentName};`;
             (wrapperRect.height - padding * 2) / height
         );
 
+        // Ensure minimum zoom of 1.0 (100%) - don't shrink below 100%
+        const finalScale = Math.max(scale, 1.0);
+
         const zoomInput = document.getElementById('previewZoom');
         if (zoomInput) {
-            if (scale > parseFloat(zoomInput.max)) {
-                zoomInput.max = Math.ceil(scale * 1.2 * 100) / 100;
+            if (finalScale > parseFloat(zoomInput.max)) {
+                zoomInput.max = Math.ceil(finalScale * 1.2 * 100) / 100;
             }
-            zoomInput.value = scale.toFixed(2);
+            zoomInput.value = finalScale.toFixed(2);
             this.updatePreviewZoom();
         } else {
             // Fallback if zoom input doesn't exist
-            this.currentZoom = scale;
+            this.currentZoom = finalScale;
             const svgEl = wrapper.querySelector('svg');
             if (svgEl) {
-                svgEl.style.transform = `scale(${scale})`;
+                svgEl.style.transform = `scale(${finalScale})`;
                 svgEl.style.transformOrigin = 'center';
             }
         }

@@ -1,16 +1,29 @@
 {
-  "name": "svg_paths-copy",
+  "name": "svg_editor",
   "version": "2.1.0",
   "description": "**Photoshop for SVGs** - A comprehensive suite of 25+ professional tools for complete SVG manipulation, editing, and creation.",
-  "main": "app.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "paper": "^0.12.18"
+    "lucide-react": "^0.554.0",
+    "paper": "^0.12.18",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8"
   }
 }

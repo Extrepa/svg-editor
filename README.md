@@ -152,7 +152,7 @@ No installation required! Just open `index.html` in a modern web browser.
 ## 📁 Project Structure
 
 ```
-svg_paths copy/
+svg_editor/
 ├── index.html          # Main HTML structure
 ├── styles.css          # All styling
 ├── app.js              # Complete application (all 25+ tools)
